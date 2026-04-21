@@ -2,8 +2,10 @@ name: LinkedIn Engagement Bot
 
 on:
   schedule:
-    # Every 2 hours, 24/7
+    # Every 2 hours - engagement run (no git commit)
     - cron: "0 */2 * * *"
+    # Midnight UTC daily - engagement run + git-commit state snapshot
+    - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,6 +18,12 @@ on:
         description: "Profile ID to run (leave blank for all)"
         required: false
         default: ""
+      commit_state:
+        description: "Commit state to git after run"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
 
 jobs:
   engage:
@@ -55,18 +63,12 @@ jobs:
             PROFILE_FLAG="--profile ${{ inputs.profile }}"
           fi
 
-          echo "Running: python engagement_bot.py $PROFILE_FLAG $DRY_FLAG"
-          python engagement_bot.py $PROFILE_FLAG $DRY_FLAG
-
-      - name: Commit updated state
-        run: |
-          git config user.name  "engagement-bot[bot]"
-          git config user.email "engagement-bot@noreply.github.com"
-          git add state/processed_comments.json
-          # Only commit if state actually changed
-          if git diff --cached --quiet; then
-            echo "No new comments processed — state unchanged"
-          else
-            git commit -m "chore: update processed comments state [skip ci]"
-            git push
+          # Commit state only at midnight (00:00 UTC) or when manually requested
+          COMMIT_FLAG=""
+          CURRENT_HOUR=$(date -u +%H)
+          if [ "$CURRENT_HOUR" = "00" ] || [ "${{ inputs.commit_state }}" = "true" ]; then
+            COMMIT_FLAG="--commit-state"
           fi
+
+          echo "Running: python engagement_bot.py $PROFILE_FLAG $DRY_FLAG $COMMIT_FLAG"
+          python engagement_bot.py $PROFILE_FLAG $DRY_FLAG $COMMIT_FLAG
