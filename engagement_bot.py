@@ -60,7 +60,7 @@ KNOWN_URNS_FILE   = ROOT / "state" / "known_post_urns.json"
 
 MAX_LIKES_PER_RUN   = 30   # FIX 4: daily safe cap
 MAX_REPLIES_PER_RUN = 20   # FIX 4: daily safe cap
-STATE_PRUNE_DAYS    = 30   # FIX 5: prune window
+STATE_PRUNE_DAYS    = 60   # prune window matches 60-day lookback
 
 
 # --------------------------------------------------------------------------- #
