@@ -1,4 +1,10 @@
 {
-  "vb_exports_personal": [],
-  "vb_exports_company": []
+    "vb_exports_company":  [
+                               "urn:li:ugcPost:7452294621377789952",
+                               "urn:li:ugcPost:7452294518852227072",
+                               "urn:li:ugcPost:7452281019841404928"
+                           ],
+    "vb_exports_personal":  [
+
+                            ]
 }
