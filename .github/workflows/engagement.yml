@@ -1,0 +1,72 @@
+name: LinkedIn Engagement Bot
+
+on:
+  schedule:
+    # Every 2 hours, 24/7
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no writes to LinkedIn)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+      profile:
+        description: "Profile ID to run (leave blank for all)"
+        required: false
+        default: ""
+
+jobs:
+  engage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # needed to commit state file back
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet -r requirements.txt
+
+      - name: Run engagement bot
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_PERSON_URN:   ${{ secrets.LINKEDIN_PERSON_URN }}
+          LINKEDIN_ORG_URN:      ${{ secrets.LINKEDIN_ORG_URN }}
+          GEMINI_API_KEY:        ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          DRY_FLAG=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_FLAG="--dry-run"
+          fi
+
+          PROFILE_FLAG=""
+          if [ -n "${{ inputs.profile }}" ]; then
+            PROFILE_FLAG="--profile ${{ inputs.profile }}"
+          fi
+
+          echo "Running: python engagement_bot.py $PROFILE_FLAG $DRY_FLAG"
+          python engagement_bot.py $PROFILE_FLAG $DRY_FLAG
+
+      - name: Commit updated state
+        run: |
+          git config user.name  "engagement-bot[bot]"
+          git config user.email "engagement-bot@noreply.github.com"
+          git add state/processed_comments.json
+          # Only commit if state actually changed
+          if git diff --cached --quiet; then
+            echo "No new comments processed — state unchanged"
+          else
+            git commit -m "chore: update processed comments state [skip ci]"
+            git push
+          fi

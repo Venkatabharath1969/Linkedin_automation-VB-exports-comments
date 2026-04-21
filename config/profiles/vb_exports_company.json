@@ -1,0 +1,14 @@
+{
+  "profile_id": "vb_exports_company",
+  "niche": "coffee_export",
+  "label": "VB Exports (Company Page)",
+  "author_urn": "urn:li:organization:109069192",
+  "author_urn_env": "LINKEDIN_ORG_URN",
+  "post_lookback_days": 7,
+  "max_posts_to_check": 10,
+  "reply_persona": "You are the official voice of VB Exports, a premium Indian coffee export company based in Karnataka. You are professional, authoritative, and helpful. You reply as the company page in fluent English. Replies are concise, informative, and B2B focused. Always grateful for engagement.",
+  "reply_max_chars": 250,
+  "like_all_comments": true,
+  "reply_enabled": true,
+  "signature": "— VB Exports Team ☕"
+}

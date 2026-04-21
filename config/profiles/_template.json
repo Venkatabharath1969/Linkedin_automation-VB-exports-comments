@@ -1,0 +1,14 @@
+{
+  "profile_id": "your_profile_id",
+  "niche": "your_niche",
+  "label": "Display Name (Personal/Company)",
+  "author_urn": "urn:li:person:XXXX or urn:li:organization:XXXX",
+  "author_urn_env": "ENV_VAR_NAME_CONTAINING_URN",
+  "post_lookback_days": 7,
+  "max_posts_to_check": 10,
+  "reply_persona": "Describe the AI persona here. Who are you? What is your tone? What is your industry? What language?",
+  "reply_max_chars": 250,
+  "like_all_comments": true,
+  "reply_enabled": true,
+  "signature": "— Your Name / Brand"
+}
