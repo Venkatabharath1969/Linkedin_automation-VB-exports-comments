@@ -159,7 +159,9 @@ def get_comments(access_token: str, post_urn: str) -> list[dict]:
 
 def like_comment(access_token: str, comment_urn: str, actor_urn: str) -> bool:
     """
-    Likes a comment. comment_urn is the full composite commentUrn.
+    Likes a comment.
+    LinkedIn REST API requires both 'actor' and 'object' in the body.
+    Missing 'object' causes 422: /object :: field is required but not found.
     Returns True on success.
     """
     import urllib.parse
@@ -169,7 +171,7 @@ def like_comment(access_token: str, comment_urn: str, actor_urn: str) -> bool:
             requests.post,
             f"{BASE}/rest/socialActions/{encoded}/likes",
             headers={**_auth_headers(access_token), "Content-Type": "application/json"},
-            json={"actor": actor_urn},
+            json={"actor": actor_urn, "object": comment_urn},
             timeout=15,
             verify=_VERIFY_SSL,
         )
