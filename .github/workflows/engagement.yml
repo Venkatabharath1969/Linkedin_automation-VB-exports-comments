@@ -63,11 +63,12 @@ jobs:
             PROFILE_FLAG="--profile ${{ inputs.profile }}"
           fi
 
-          # Commit state only at midnight (00:00 UTC) or when manually requested
-          COMMIT_FLAG=""
-          CURRENT_HOUR=$(date -u +%H)
-          if [ "$CURRENT_HOUR" = "00" ] || [ "${{ inputs.commit_state }}" = "true" ]; then
-            COMMIT_FLAG="--commit-state"
+          # Always commit state so processed comment IDs persist across runs.
+          # _git_commit_state() uses 'git diff --quiet' internally - only commits
+          # when state actually changed (new comments processed). Zero noise on quiet runs.
+          COMMIT_FLAG="--commit-state"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            COMMIT_FLAG=""  # never commit state in dry-run mode
           fi
 
           echo "Running: python engagement_bot.py $PROFILE_FLAG $DRY_FLAG $COMMIT_FLAG"
