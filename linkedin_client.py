@@ -58,18 +58,28 @@ def _auth_headers(access_token: str) -> dict:
 
 # ── Posts ─────────────────────────────────────────────────────────────────────
 
-def get_recent_posts(access_token: str, author_urn: str, count: int = 10) -> list[dict]:
+def get_recent_posts(
+    access_token: str,
+    author_urn: str,
+    count: int = 10,
+    known_urns: list[str] | None = None,
+) -> list[dict]:
     """
     Returns up to `count` recent posts by the author.
 
-    Strategy:
-      - Organization URNs: use /rest/posts?author=...&q=author (requires r_organization_social)
-      - Person URNs:       /rest/posts requires restricted r_member_social scope.
-                          Fall back to /v2/ugcPosts?q=authors which works with w_member_social.
+    Three-tier strategy:
+      Tier 1 - REST /rest/posts        (org URNs: works with r_organization_social)
+      Tier 2 - v2  /v2/ugcPosts        (person URNs: also blocked - requires r_member_social)
+      Tier 3 - known_urns fallback     (cross-repo sync from carousel bot, always works)
+
+    LinkedIn does not allow reading a person's own posts without the restricted
+    r_member_social scope. Tier 3 is how we solve this: the carousel bot (GitLab)
+    pushes every new personal post URN to state/known_post_urns.json in this repo
+    via GitHub API after posting. The engagement bot reads it from disk.
     """
     import urllib.parse
 
-    # Try REST posts API first (works for org URNs, and person URNs with r_member_social)
+    # Tier 1: REST posts API (works for org URNs)
     params = {"author": author_urn, "count": count, "q": "author"}
     try:
         resp = _retry(
@@ -83,15 +93,14 @@ def get_recent_posts(access_token: str, author_urn: str, count: int = 10) -> lis
         elements = resp.json().get("elements", [])
         log.info("get_recent_posts (REST): %d posts for %s", len(elements), author_urn)
         return elements
-    except Exception as e:
-        # For person URNs: LinkedIn returns 400 "Member permissions must be used when using
-        # member as author" if token lacks r_member_social (restricted scope).
-        # Fall back to V2 UGC Posts API which works with w_member_social.
+    except Exception:
         if "urn:li:person" not in author_urn:
-            log.warning("get_recent_posts failed: %s", e)
-            return []
-        log.info("REST posts 400 for person URN — falling back to v2/ugcPosts API")
+            # Org URN failed for a non-permission reason - give up
+            log.warning("get_recent_posts (REST) failed for org URN %s", author_urn)
+            return known_urns_to_elements(known_urns) if known_urns else []
+        log.info("REST blocked for person URN (r_member_social required) — trying v2")
 
+    # Tier 2: v2 ugcPosts (also blocked by LinkedIn for person URNs without r_member_social)
     encoded = urllib.parse.quote(author_urn, safe="")
     try:
         resp = requests.get(
@@ -102,13 +111,25 @@ def get_recent_posts(access_token: str, author_urn: str, count: int = 10) -> lis
             verify=_VERIFY_SSL,
         )
         resp.raise_for_status()
-        # v2 uses 'elements' with 'id' field same as REST — compatible
         elements = resp.json().get("elements", [])
-        log.info("get_recent_posts (v2/ugcPosts): %d posts for %s", len(elements), author_urn)
+        log.info("get_recent_posts (v2): %d posts for %s", len(elements), author_urn)
         return elements
-    except Exception as e2:
-        log.warning("get_recent_posts v2 fallback also failed: %s", e2)
-        return []
+    except Exception:
+        log.info("v2 also blocked — using cross-repo known_urns fallback")
+
+    # Tier 3: known_urns populated by carousel bot via GitHub API sync
+    if known_urns:
+        elements = known_urns_to_elements(known_urns)
+        log.info("get_recent_posts (known_urns): %d posts for %s", len(elements), author_urn)
+        return elements
+
+    log.warning("No posts found for %s (all tiers failed or empty known_urns)", author_urn)
+    return []
+
+
+def known_urns_to_elements(urns: list[str]) -> list[dict]:
+    """Convert a list of known post URNs to the same dict format as the API returns."""
+    return [{"id": urn, "created": {"time": 0}} for urn in urns]
 
 
 # ── Comments ──────────────────────────────────────────────────────────────────

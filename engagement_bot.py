@@ -55,7 +55,8 @@ log = logging.getLogger("engagement_bot")
 # --------------------------------------------------------------------------- #
 ROOT         = pathlib.Path(__file__).parent
 PROFILES_DIR = ROOT / "config" / "profiles"
-STATE_FILE   = ROOT / "state" / "processed_comments.json"
+STATE_FILE        = ROOT / "state" / "processed_comments.json"
+KNOWN_URNS_FILE   = ROOT / "state" / "known_post_urns.json"
 
 MAX_LIKES_PER_RUN   = 30   # FIX 4: daily safe cap
 MAX_REPLIES_PER_RUN = 20   # FIX 4: daily safe cap
@@ -84,6 +85,16 @@ def _is_meaningful(text: str, min_chars: int = 5) -> bool:
         if unicodedata.category(ch) not in ("So", "Cs")  # So=Symbol, Cs=surrogate
     ).strip()
     return len(cleaned) >= min_chars
+
+
+def _load_known_urns() -> dict:
+    """Load state/known_post_urns.json — populated by the carousel bot after each post."""
+    if KNOWN_URNS_FILE.exists():
+        try:
+            return json.loads(KNOWN_URNS_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            log.warning("known_post_urns.json unreadable (%s)", e)
+    return {}
 
 
 # --------------------------------------------------------------------------- #
@@ -163,8 +174,9 @@ def run_profile(
     access_token: str,
     state: dict,
     dry_run: bool,
-    likes_left: list[int],    # mutable - shared cap across all profiles in one run
-    replies_left: list[int],  # mutable - shared cap across all profiles in one run
+    likes_left: list[int],
+    replies_left: list[int],
+    known_urns: list[str] | None = None,
 ) -> dict:
     pid        = profile["profile_id"]
     label      = profile.get("label", pid)
@@ -188,7 +200,7 @@ def run_profile(
     cutoff_ms    = int((datetime.now(timezone.utc) - timedelta(days=lookback)).timestamp() * 1000)
     post_context = niche.replace("_", " ").title() + " post"
 
-    posts = get_recent_posts(access_token, author_urn, count=max_posts)
+    posts = get_recent_posts(access_token, author_urn, count=max_posts, known_urns=known_urns)
     log.info("Found %d posts to scan", len(posts))
 
     total_liked = total_replied = total_skipped = 0
@@ -333,6 +345,9 @@ def main():
 
     log.info("Loaded %d profile(s) | dry_run=%s", len(profiles), args.dry_run)
 
+    known_urns = _load_known_urns()
+    log.info("Known post URNs loaded: %d profile(s) in sync file", len(known_urns))
+
     # FIX 5: prune stale entries every run before processing
     state, pruned = _prune_state(_load_state())
     if pruned:
@@ -347,6 +362,7 @@ def main():
             state = run_profile(
                 profile, token, state, args.dry_run,
                 likes_left, replies_left,
+                known_urns.get(profile.get("profile_id", ""), []),
             )
         except Exception as e:
             log.error("Profile %s failed: %s", profile.get("profile_id"), e)
