@@ -61,9 +61,15 @@ def _auth_headers(access_token: str) -> dict:
 def get_recent_posts(access_token: str, author_urn: str, count: int = 10) -> list[dict]:
     """
     Returns up to `count` recent posts by the author.
-    Each element has at least: id (ugcPost URN), created.time
+
+    Strategy:
+      - Organization URNs: use /rest/posts?author=...&q=author (requires r_organization_social)
+      - Person URNs:       /rest/posts requires restricted r_member_social scope.
+                          Fall back to /v2/ugcPosts?q=authors which works with w_member_social.
     """
     import urllib.parse
+
+    # Try REST posts API first (works for org URNs, and person URNs with r_member_social)
     params = {"author": author_urn, "count": count, "q": "author"}
     try:
         resp = _retry(
@@ -74,9 +80,34 @@ def get_recent_posts(access_token: str, author_urn: str, count: int = 10) -> lis
             timeout=15,
             verify=_VERIFY_SSL,
         )
-        return resp.json().get("elements", [])
+        elements = resp.json().get("elements", [])
+        log.info("get_recent_posts (REST): %d posts for %s", len(elements), author_urn)
+        return elements
     except Exception as e:
-        log.warning("get_recent_posts failed: %s", e)
+        # For person URNs: LinkedIn returns 400 "Member permissions must be used when using
+        # member as author" if token lacks r_member_social (restricted scope).
+        # Fall back to V2 UGC Posts API which works with w_member_social.
+        if "urn:li:person" not in author_urn:
+            log.warning("get_recent_posts failed: %s", e)
+            return []
+        log.info("REST posts 400 for person URN — falling back to v2/ugcPosts API")
+
+    encoded = urllib.parse.quote(author_urn, safe="")
+    try:
+        resp = requests.get(
+            f"{BASE}/v2/ugcPosts",
+            params={"q": "authors", "authors": f"List({encoded})", "count": count},
+            headers=_auth_headers(access_token),
+            timeout=15,
+            verify=_VERIFY_SSL,
+        )
+        resp.raise_for_status()
+        # v2 uses 'elements' with 'id' field same as REST — compatible
+        elements = resp.json().get("elements", [])
+        log.info("get_recent_posts (v2/ugcPosts): %d posts for %s", len(elements), author_urn)
+        return elements
+    except Exception as e2:
+        log.warning("get_recent_posts v2 fallback also failed: %s", e2)
         return []
 
 
